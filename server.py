@@ -26,7 +26,9 @@ from utils import (
     format_sources_for_response,
     format_context_with_sources, 
     store_research_results,
-    create_research_prompt
+    create_research_prompt,
+    clean_search_results,
+    clean_context
 )
 
 logging.basicConfig(
@@ -52,12 +54,13 @@ async def research_resource(topic: str) -> str:
     Provide research context for a given topic directly as a resource.
     
     This allows LLMs to access web-sourced information without explicit function calls.
+    Output is cleaned of HTML tags and entities for clean Markdown readability.
     
     Args:
         topic: The research topic or query
         
     Returns:
-        String containing the research context with source information
+        String containing the research context with source information (Markdown-safe)
     """
     # Check if we've already researched this topic
     if topic in research_store:
@@ -79,11 +82,14 @@ async def research_resource(topic: str) -> str:
         sources = researcher.get_research_sources()
         source_urls = researcher.get_source_urls()
         
+        # Clean HTML from context for clean markdown output
+        cleaned_context = clean_context(context)
+        
         # Format with sources included
-        formatted_context = format_context_with_sources(topic, context, sources)
+        formatted_context = format_context_with_sources(topic, cleaned_context, sources)
         
         # Store for future use
-        store_research_results(topic, context, sources, source_urls, formatted_context)
+        store_research_results(topic, cleaned_context, sources, source_urls, formatted_context)
         
         return formatted_context
     except Exception as e:
@@ -94,14 +100,17 @@ async def research_resource(topic: str) -> str:
 async def deep_research(query: str) -> Dict[str, Any]:
     """
     Conduct a web deep research on a given query using GPT Researcher. 
-    Use this tool when you need time-sensitive, real-time information like stock prices, news, people, specific knowledge, etc.
+    Use this tool when you need time-sensitive, real-time information like stock prices, 
+    news, people, specific knowledge, etc.
+    
+    Output is cleaned of HTML tags and entities for clean Markdown readability.
     
     Args:
         query: The research query or topic
         
     Returns:
         Dict containing research status, ID, and the actual research context and sources
-        that can be used directly by LLMs for context enrichment
+        that can be used directly by LLMs for context enrichment (Markdown-safe)
     """
     logger.info(f"Conducting research on query: {query}...")
     
@@ -122,14 +131,17 @@ async def deep_research(query: str) -> Dict[str, Any]:
         sources = researcher.get_research_sources()
         source_urls = researcher.get_source_urls()
         
+        # Clean HTML from context for clean markdown output
+        cleaned_context = clean_context(context)
+        
         # Store in the research store for the resource API
-        store_research_results(query, context, sources, source_urls)
+        store_research_results(query, cleaned_context, sources, source_urls)
         
         return create_success_response({
             "research_id": research_id,
             "query": query,
             "source_count": len(sources),
-            "context": context,
+            "context": cleaned_context,
             "sources": format_sources_for_response(sources),
             "source_urls": source_urls
         })
@@ -144,11 +156,13 @@ async def quick_search(query: str) -> Dict[str, Any]:
     This optimizes for speed over quality and is useful when an LLM doesn't need in-depth
     information on a topic.
     
+    Output is cleaned of HTML tags and entities for clean Markdown readability.
+    
     Args:
         query: The search query
         
     Returns:
-        Dict containing search results and snippets
+        Dict containing search results and snippets (Markdown-safe)
     """
     logger.info(f"Performing quick search on query: {query}...")
     
@@ -164,11 +178,14 @@ async def quick_search(query: str) -> Dict[str, Any]:
         mcp.researchers[search_id] = researcher
         logger.info(f"Quick search completed for ID: {search_id}")
         
+        # Clean HTML from search results for clean markdown output
+        cleaned_results = clean_search_results(search_results) if search_results else []
+        
         return create_success_response({
             "search_id": search_id,
             "query": query,
-            "result_count": len(search_results) if search_results else 0,
-            "search_results": search_results
+            "result_count": len(cleaned_results),
+            "search_results": cleaned_results
         })
     except Exception as e:
         return handle_exception(e, "Quick search")
@@ -242,7 +259,7 @@ async def get_research_context(research_id: str) -> Dict[str, Any]:
         research_id: The ID of the research session
         
     Returns:
-        Dict containing the research context
+        Dict containing the research context (Markdown-safe, HTML cleaned)
     """
     success, researcher, error = get_researcher_by_id(mcp.researchers, research_id)
     if not success:
@@ -250,8 +267,11 @@ async def get_research_context(research_id: str) -> Dict[str, Any]:
     
     context = researcher.get_research_context()
     
+    # Clean HTML from context for clean markdown output
+    cleaned_context = clean_context(context)
+    
     return create_success_response({
-        "context": context
+        "context": cleaned_context
     })
 
 
@@ -276,8 +296,9 @@ async def health_check(request):
 
 def run_server():
     """Run the MCP server using FastMCP's built-in event loop handling."""
-    # Check if API keys are set
-    if not os.getenv("OPENAI_API_KEY"):
+    # Check if API keys are set (skip for Ollama)
+    llm_provider = os.getenv("LLM_PROVIDER", "").lower()
+    if llm_provider != "ollama" and not os.getenv("OPENAI_API_KEY"):
         logger.error("OPENAI_API_KEY not found. Please set it in your .env file.")
         return
 
@@ -291,7 +312,7 @@ def run_server():
     
     # Add startup message
     logger.info(f"Starting GPT Researcher MCP Server with {transport} transport...")
-    print(f"🚀 GPT Researcher MCP Server starting with {transport} transport...")
+    print(f"[GPT Researcher] MCP Server starting with {transport} transport...")
     print("   Check researcher_mcp_server.log for details")
 
     # Let FastMCP handle the event loop
@@ -312,10 +333,10 @@ def run_server():
             pass  # Keep the process alive
     except Exception as e:
         logger.error(f"Error running MCP server: {str(e)}")
-        print(f"❌ MCP Server error: {str(e)}")
+        print(f"[ERROR] MCP Server error: {str(e)}")
         return
         
-    print("✅ MCP Server stopped")
+    print("[OK] MCP Server stopped")
 
 
 if __name__ == "__main__":

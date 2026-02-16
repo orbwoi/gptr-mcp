@@ -4,6 +4,8 @@ GPT Researcher MCP Server Utilities
 This module provides utility functions and helpers for the GPT Researcher MCP Server.
 """
 
+import re
+import html
 import sys
 from typing import Dict, List, Optional, Tuple, Any
 from loguru import logger
@@ -13,6 +15,74 @@ logger.configure(handlers=[{"sink": sys.stderr, "level": "INFO"}])
 
 # Research store to track ongoing research topics and contexts
 research_store = {}
+
+
+# HTML/Markdown Utilities
+def strip_html(text: str) -> str:
+    """
+    Strip HTML tags and decode HTML entities from text.
+    
+    Args:
+        text: Text that may contain HTML tags or entities
+        
+    Returns:
+        Clean text with HTML removed
+    """
+    if not text:
+        return text
+    
+    # Decode HTML entities (e.g., &amp; -> &, &#160; -> space, \u00b7 -> ·)
+    text = html.unescape(text)
+    
+    # Remove HTML tags
+    text = re.sub(r'<[^>]+>', '', text)
+    
+    # Remove excess whitespace
+    text = re.sub(r'\s+', ' ', text)
+    
+    return text.strip()
+
+
+def clean_search_results(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Clean HTML from search results (typically from DuckDuckGo body field).
+    
+    Args:
+        results: List of search result dictionaries
+        
+    Returns:
+        Cleaned search results
+    """
+    cleaned = []
+    for result in results:
+        cleaned_result = {}
+        for key, value in result.items():
+            if isinstance(value, str):
+                cleaned_result[key] = strip_html(value)
+            else:
+                cleaned_result[key] = value
+        cleaned.append(cleaned_result)
+    return cleaned
+
+
+def clean_context(context: Any) -> str:
+    """
+    Clean HTML from research context.
+    
+    Args:
+        context: Research context (string or list of strings)
+        
+    Returns:
+        Clean text
+    """
+    if isinstance(context, list):
+        # Context is a list of strings
+        cleaned_parts = [strip_html(part) if isinstance(part, str) else str(part) for part in context]
+        return '\n\n'.join(cleaned_parts)
+    elif isinstance(context, str):
+        return strip_html(context)
+    else:
+        return str(context)
 
 # API Response Utilities
 def create_error_response(message: str) -> Dict[str, Any]:
