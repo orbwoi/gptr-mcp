@@ -196,12 +196,14 @@ async def write_report(research_id: str, custom_prompt: Optional[str] = None) ->
     """
     Generate a report based on previously conducted research.
     
+    Output is cleaned of HTML tags and entities for clean Markdown readability.
+    
     Args:
         research_id: The ID of the research session from deep_research
         custom_prompt: Optional custom prompt for report generation
         
     Returns:
-        Dict containing the report content and metadata
+        Dict containing the report content and metadata (Markdown-safe)
     """
     success, researcher, error = get_researcher_by_id(mcp.researchers, research_id)
     if not success:
@@ -213,12 +215,15 @@ async def write_report(research_id: str, custom_prompt: Optional[str] = None) ->
         # Generate report
         report = await researcher.write_report(custom_prompt=custom_prompt)
         
+        # Clean HTML from report for clean markdown output
+        cleaned_report = clean_context(report)
+        
         # Get additional information
         sources = researcher.get_research_sources()
         costs = researcher.get_costs()
         
         return create_success_response({
-            "report": report,
+            "report": cleaned_report,
             "source_count": len(sources),
             "costs": costs
         })
