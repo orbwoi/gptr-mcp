@@ -10,6 +10,12 @@ import sys
 from typing import Dict, List, Optional, Tuple, Any
 from loguru import logger
 
+try:
+    from markdownify import markdownify as md
+    HAS_MARKDOWNIFY = True
+except ImportError:
+    HAS_MARKDOWNIFY = False
+
 # Configure logging for console only (no file logging)
 logger.configure(handlers=[{"sink": sys.stderr, "level": "INFO"}])
 
@@ -18,9 +24,49 @@ research_store = {}
 
 
 # HTML/Markdown Utilities
+def html_to_markdown(text: str) -> str:
+    """
+    Convert HTML to Markdown, preserving structure (tables, headers, lists, etc.)
+    
+    Falls back to simple tag stripping if markdownify is not available.
+    
+    Args:
+        text: Text that may contain HTML
+        
+    Returns:
+        Clean Markdown text
+    """
+    if not text:
+        return text
+    
+    # Decode HTML entities first
+    text = html.unescape(text)
+    
+    # Check if text contains HTML tags
+    if '<' not in text or '>' not in text:
+        return text
+    
+    # Use markdownify if available (preserves structure)
+    if HAS_MARKDOWNIFY:
+        try:
+            result = md(text, heading_style="atx", strip=['script', 'style'])
+            # Clean up excessive newlines
+            result = re.sub(r'\n{3,}', '\n\n', result)
+            return result.strip()
+        except Exception:
+            pass  # Fall through to basic stripping
+    
+    # Fallback: strip tags (loses structure but removes HTML)
+    text = re.sub(r'<[^>]+>', '', text)
+    text = re.sub(r'\s+', ' ', text)
+    return text.strip()
+
+
 def strip_html(text: str) -> str:
     """
     Strip HTML tags and decode HTML entities from text.
+    
+    Deprecated: Use html_to_markdown() for better results.
     
     Args:
         text: Text that may contain HTML tags or entities
@@ -45,20 +91,20 @@ def strip_html(text: str) -> str:
 
 def clean_search_results(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
-    Clean HTML from search results (typically from DuckDuckGo body field).
+    Convert HTML to Markdown in search results (typically from DuckDuckGo body field).
     
     Args:
         results: List of search result dictionaries
         
     Returns:
-        Cleaned search results
+        Cleaned search results with Markdown
     """
     cleaned = []
     for result in results:
         cleaned_result = {}
         for key, value in result.items():
             if isinstance(value, str):
-                cleaned_result[key] = strip_html(value)
+                cleaned_result[key] = html_to_markdown(value)
             else:
                 cleaned_result[key] = value
         cleaned.append(cleaned_result)
@@ -67,20 +113,20 @@ def clean_search_results(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 def clean_context(context: Any) -> str:
     """
-    Clean HTML from research context.
+    Convert HTML to Markdown from research context.
     
     Args:
         context: Research context (string or list of strings)
         
     Returns:
-        Clean text
+        Clean Markdown text
     """
     if isinstance(context, list):
         # Context is a list of strings
-        cleaned_parts = [strip_html(part) if isinstance(part, str) else str(part) for part in context]
+        cleaned_parts = [html_to_markdown(part) if isinstance(part, str) else str(part) for part in context]
         return '\n\n'.join(cleaned_parts)
     elif isinstance(context, str):
-        return strip_html(context)
+        return html_to_markdown(context)
     else:
         return str(context)
 
