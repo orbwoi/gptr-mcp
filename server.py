@@ -191,44 +191,9 @@ async def quick_search(query: str) -> Dict[str, Any]:
         return handle_exception(e, "Quick search")
 
 
-@mcp.tool()
-async def write_report(research_id: str, custom_prompt: Optional[str] = None) -> Dict[str, Any]:
-    """
-    Generate a report based on previously conducted research.
-    
-    Output is cleaned of HTML tags and entities for clean Markdown readability.
-    
-    Args:
-        research_id: The ID of the research session from deep_research
-        custom_prompt: Optional custom prompt for report generation
-        
-    Returns:
-        Dict containing the report content and metadata (Markdown-safe)
-    """
-    success, researcher, error = get_researcher_by_id(mcp.researchers, research_id)
-    if not success:
-        return error
-    
-    logger.info(f"Generating report for research ID: {research_id}")
-    
-    try:
-        # Generate report
-        report = await researcher.write_report(custom_prompt=custom_prompt)
-        
-        # Clean HTML from report for clean markdown output
-        cleaned_report = clean_context(report)
-        
-        # Get additional information
-        sources = researcher.get_research_sources()
-        costs = researcher.get_costs()
-        
-        return create_success_response({
-            "report": cleaned_report,
-            "source_count": len(sources),
-            "costs": costs
-        })
-    except Exception as e:
-        return handle_exception(e, "Report generation")
+# NOTE: write_report tool removed - agents should synthesize reports themselves
+# from the context returned by deep_research. This saves tokens by avoiding
+# a second LLM call inside the MCP server.
 
 
 @mcp.tool()
